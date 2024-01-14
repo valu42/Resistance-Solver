@@ -25,7 +25,7 @@ def generate_missions(player_count, participant_count):
 
     return possible_participants
 
-def can_play_fail(mission_number, participants, hypothesis, mission_parameters):
+def can_play_fail(mission_number, participants, hypothesis):
     """
     Checks if the hypothesis allows the participants to play fail on the mission.
 
@@ -33,6 +33,7 @@ def can_play_fail(mission_number, participants, hypothesis, mission_parameters):
     """
 
     spy_count = sum([1 if hypothesis[participant] else 0 for participant in participants])
+   # print(participants, hypothesis, spy_count)
     
     if mission_number == 4: 
         return spy_count >= 2
@@ -50,6 +51,7 @@ def prob_fail(mission_number, participants, hypothesis, results, spy_params):
         If playing success loses the game for spies, the spies will play fail. The same is true if playing fail wins the game for spies.
     """
 
+   # print("hypothesis: ", hypothesis)
     if not can_play_fail(mission_number, participants, hypothesis):
         return 0
 
@@ -146,7 +148,6 @@ def chance_to_win(round_number, results_original, state_original, spy_params):
        # print("5", max(state.values()))
         return max(state.values())
 
-
     max_chance = 0
     if round_number == 1:
         possible_participants = [[0,1]]
@@ -161,27 +162,95 @@ def chance_to_win(round_number, results_original, state_original, spy_params):
         results_after_success = results + [1]
         chance_after_success = chance_to_win(round_number + 1, results_after_success, state_after_success, spy_params)
         
+        #if round_number == 3:
+        #    print("stuff: ", results, [state_after_success[x] for x in state_after_success])
+
         state_after_fail = update_mission_fail(round_number, participants, state, results, spy_params)
         results_after_fail = results + [0]
         chance_after_fail = chance_to_win(round_number + 1, results_after_fail, state_after_fail, spy_params)
 
         chance_of_success = 0
         for hypothesis in state:
-            chance_of_success += state[hypothesis] * prob_success(round_number, participants, hypothesis, results, spy_params)
+            chance_of_success += state[hypothesis] * prob_success(round_number, participants, hypothesis, results, spy_params) 
 
         chance = chance_of_success * chance_after_success + (1 - chance_of_success) * chance_after_fail
-        if round_number == 2:
-            print(results, participants, chance)
+        #if round_number == 2:
+        #    print(results, participants, chance)
         max_chance = max(max_chance, chance)
     return max_chance
 
+def chance_to_win3(round_number, results_original, state_original_belief, state_original_real, spy_params_belief, spy_params_real):
+
+    state_belief = dict(state_original_belief)
+    state_real = dict(state_original_real)
+    results = list(results_original)
+
+    successes = sum(results)
+    fails = len(results) - successes
+
+    if successes == 3:
+        return 1
+    if fails == 3:
+        return 0
+
+    if round_number == 5:
+       # print("5", max(state.values()))
+        return max(state_real.values())
+
+    max_chance_belief = 0
+    played_chance_real = 0
+    if round_number == 1:
+        possible_participants = [[0,1]]
+    elif round_number == 2:
+        possible_participants = [[0,1,2], [0,2,3], [3,4,5]]
+    else:
+        people_on_mission = [2, 3, 3, 4, 4][round_number - 1]
+        possible_participants = generate_missions(7, people_on_mission)
+
+    for participants in possible_participants:
+        state_after_success_belief = update_mission_success(round_number, participants, state_belief, results, spy_params_belief)
+        state_after_success_real = update_mission_success(round_number, participants, state_real, results, spy_params_real)
+        results_after_success = results + [1]
+        chance_after_success_belief = chance_to_win(round_number + 1, results_after_success, state_after_success_belief, spy_params_belief)
+        chance_after_success_real = chance_to_win3(round_number + 1, results_after_success, state_after_success_belief, state_after_success_real, spy_params_belief, spy_params_real)
+
+        #if round_number == 3:
+        #    print("stuff: ", results, [state_after_success[x] for x in state_after_success])
+
+        state_after_fail_belief = update_mission_fail(round_number, participants, state_belief, results, spy_params_belief)
+        state_after_fail_real = update_mission_fail(round_number, participants, state_real, results, spy_params_real)
+        results_after_fail = results + [0]
+        chance_after_fail_belief = chance_to_win(round_number + 1, results_after_fail, state_after_fail_belief, spy_params_belief)
+        chance_after_fail_real = chance_to_win3(round_number + 1, results_after_fail, state_after_fail_belief, state_after_fail_real, spy_params_belief, spy_params_real)
+
+        chance_of_success_belief = 0
+        chance_of_success_real = 0
+        for hypothesis in state_belief:
+            chance_of_success_belief += state_belief[hypothesis] * prob_success(round_number, participants, hypothesis, results, spy_params_belief) 
+            chance_of_success_real += state_real[hypothesis] * prob_success(round_number, participants, hypothesis, results, spy_params_real)
+
+        chance_belief = chance_of_success_belief * chance_after_success_belief + (1 - chance_of_success_belief) * chance_after_fail_belief
+        chance_real = chance_of_success_real * chance_after_success_real + (1 - chance_of_success_real) * chance_after_fail_real
+        if chance_belief > max_chance_belief:
+            max_chance_belief = chance_belief
+            played_chance_real = chance_real
+
+        if round_number == 2:
+            print("belief: ",   results, participants, chance_belief)
+            print("real: ", results, participants, chance_real)
+        max_chance_belief = max(max_chance_belief, chance_belief)
+
+    return played_chance_real
+
+
 def simulate_game(round_number, results_original, state_original, correct_hypothesis, spy_params):
     """
-        Simulates the game. The function works similarly to chance_to_win but instead of calculating the probability of winning the game, it simulates the game by 
-        taking always taking the action that maximizes the chance of winning the game.
+        Simulates the game. The function works similarly to chance_to_win but instead of calculating the probability of winning the game,
+        it simulates the game by always taking the action that maximizes the chance of winning the game.
 
         The function returns True if the spies win and False otherwise.
     """
+    
     state = dict(state_original)
     results = list(results_original)
 
@@ -224,7 +293,6 @@ def simulate_game(round_number, results_original, state_original, correct_hypoth
             best_chance = chance
             best_participants = participants
     
-
     if random.random() < prob_success(round_number, best_participants, correct_hypothesis, results, spy_params):
         return simulate_game(round_number + 1, results + [1], update_mission_success(round_number, best_participants, state, results, spy_params), correct_hypothesis, spy_params)
     else:
@@ -233,7 +301,7 @@ def simulate_game(round_number, results_original, state_original, correct_hypoth
 
 
 
-def init_state(player_count, spy_count):
+def init_state(player_count, number_of_spies):
     """
         Initializes the state.
 
@@ -248,7 +316,7 @@ def init_state(player_count, spy_count):
             if i & (1 << j):
                 hypothesis[j] = True
                 spy_count += 1
-        if spy_count == spy_count:
+        if spy_count == number_of_spies:
             state[tuple(hypothesis)] = 1
     
     for hypothesis in state:
@@ -266,8 +334,8 @@ def init_spy_params():
     """
 
     params = {
-        (1, 1, 0): 0.5,
-        (1, 2, 0): 1,
+        (1, 1, 0): 0.2  ,
+        (1, 2, 0): 0,
         (2, 1, 0): 1,
         (2, 1, 1): 1,
         (2, 2, 0): 1,
@@ -301,10 +369,13 @@ def find_constant_param():
         print(f"{prob}: {chance_to_win(1, [], init_state(7, 3), params)}")
 
 state = init_state(7, 3)
-spy_params = init_spy_params()
-#chance_to_win(1, [], state, spy_params)
+spy_params_belief = constant_params(0.5)
+spy_params_real = constant_params(0.99)
+#print(chance_to_win(1, [], state, spy_params))
 
-def simulate_all_games(player_count, spy_count, num_games, spy_params):
+print(chance_to_win3(1, [], state, state, spy_params_belief, spy_params_real))
+
+def simulate_all_games(player_count, spy_count, num_games, spy_params_belief, spy_params_real):
     """
         Simulates all possible spy configurations num_games times and returns the average chance of winning.
     """
@@ -315,7 +386,7 @@ def simulate_all_games(player_count, spy_count, num_games, spy_params):
         chance_to_win_hypothesis = 0
         
         for _ in range(num_games):
-            if simulate_game(1, [], state, hypothesis, spy_params):
+            if simulate_game(1, [], state, hypothesis, spy_params_belief, spy_params_real):
                 chance_to_win_hypothesis += 1
 
         chance_to_win_hypothesis /= num_games
@@ -323,3 +394,5 @@ def simulate_all_games(player_count, spy_count, num_games, spy_params):
         chance += chance_to_win_hypothesis
     chance /= len(state)
     return chance
+
+#print(simulate_all_games(7, 3, 1, spy_params_belief, spy_params_real))
